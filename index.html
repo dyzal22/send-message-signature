@@ -5,19 +5,80 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Hybrid Encrypt + Full Verify (Armor)</title>
   <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial;background:#f4f6f9;margin:0;padding:20px;color:#222}
-    .wrap{max-width:900px;margin:0 auto;background:#fff;padding:18px;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,0.06)}
-    .tabs{display:flex;gap:8px;margin-bottom:16px}
-    .tab{flex:1;padding:10px 12px;text-align:center;cursor:pointer;background:#2f3640;color:#fff;border-radius:6px}
-    .tab.inactive{background:#57606f}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    label{font-weight:600;margin-top:8px;display:block}
-    textarea,input{width:100%;padding:10px;border:1px solid #dfe6e9;border-radius:6px;resize:vertical}
-    textarea.mono{font-family:monospace}
-    button{margin-top:12px;padding:10px 14px;background:#2e86de;color:#fff;border:none;border-radius:8px;cursor:pointer}
-    pre{background:#f7f9fb;padding:12px;border-radius:8px;white-space:pre-wrap;word-break:break-word}
-    .small{font-size:0.9em;color:#555}
-    .note{background:#f1f2f6;padding:8px 10px;border-left:4px solid #2e86de;border-radius:6px;margin-top:4px;font-size:0.9em;color:#333}
+    body {
+      font-family: system-ui, Segoe UI, Roboto, Arial;
+      background: #f4f6f9;
+      margin: 0;
+      padding: 20px;
+      color: #222;
+    }
+    .wrap {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 18px;
+      border-radius: 10px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.06);
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .tab {
+      flex: 1;
+      padding: 10px 12px;
+      text-align: center;
+      cursor: pointer;
+      background: #2f3640;
+      color: #fff;
+      border-radius: 6px;
+    }
+    .tab.inactive {
+      background: #57606f;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    label {
+      font-weight: 600;
+      margin-top: 8px;
+      display: block;
+    }
+    textarea, input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #dfe6e9;
+      border-radius: 6px;
+      resize: vertical;
+      box-sizing: border-box;
+      min-height: 100px; /* agar tidak tumpang tindih */
+    }
+    textarea.mono {
+      font-family: monospace;
+    }
+    button {
+      margin-top: 12px;
+      padding: 10px 14px;
+      background: #2e86de;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    pre {
+      background: #f7f9fb;
+      padding: 12px;
+      border-radius: 8px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .small {
+      font-size: 0.9em;
+      color: #555;
+    }
   </style>
 </head>
 <body>
@@ -27,59 +88,11 @@
       <div id="tabReceive" class="tab inactive">📥 Receive & Verify (Receiver)</div>
     </div>
 
-    <!-- ENCRYPT & SIGN -->
-    <div id="contentEncrypt">
-      <h2>Encrypt & Sign Message</h2>
-      <label>Message (plaintext)</label>
-      <textarea id="messagePlain" rows="6" placeholder="Tulis pesan yang ingin dikirim..."></textarea>
-
-      <div class="grid">
-        <div>
-          <label>Sender Private Key (PKCS#8 PEM)</label>
-          <textarea id="senderPriv" rows="6" class="mono" placeholder="-----BEGIN PRIVATE KEY-----..."></textarea>
-          <div class="note">🔑 <b>Penjelasan:</b> Kunci privat pengirim digunakan untuk <b>menandatangani pesan</b> agar penerima bisa memverifikasi keaslian dan integritas pesan. Jangan pernah membagikan kunci privat ini ke siapa pun.</div>
-        </div>
-        <div>
-          <label>Sender Public Key (SPKI PEM)</label>
-          <textarea id="senderPub" rows="6" class="mono" placeholder="-----BEGIN PUBLIC KEY-----..."></textarea>
-          <div class="note">📜 <b>Penjelasan:</b> Kunci publik pengirim akan disertakan dalam armor agar penerima dapat <b>memverifikasi tanda tangan digital</b> dari pengirim. Kunci ini tidak bersifat rahasia.</div>
-        </div>
-      </div>
-
-      <label>Recipient Public Key (SPKI PEM)</label>
-      <textarea id="recipientPub" rows="6" class="mono" placeholder="-----BEGIN PUBLIC KEY-----..."></textarea>
-      <div class="note">🎯 <b>Penjelasan:</b> Kunci publik penerima digunakan untuk <b>mengenkripsi pesan</b>. Hanya penerima yang memiliki kunci privat pasangannya yang dapat mendekripsi pesan ini.</div>
-
-      <button id="encryptBtn">Encrypt & Produce Armor</button>
-
-      <h3 style="margin-top:14px">Armor-style Encrypted Message (copy-paste)</h3>
-      <pre id="armorOutput" style="min-height:120px">[hasil armor akan tampil di sini]</pre>
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <button id="copyArmor">Copy Armor</button>
-        <button id="downloadArmor">Download .asc</button>
-      </div>
-    </div>
-
-    <!-- RECEIVE & VERIFY -->
-    <div id="contentReceive" style="display:none;margin-top:8px">
-      <h2>Receive & Verify</h2>
-      <label>Recipient Private Key (PKCS#8 PEM)</label>
-      <textarea id="recipientPriv" rows="6" class="mono" placeholder="-----BEGIN PRIVATE KEY-----..."></textarea>
-      <div class="note">🔓 <b>Penjelasan:</b> Kunci privat penerima digunakan untuk <b>mendekripsi pesan terenkripsi</b>. Simpan kunci ini dengan aman karena dapat membuka isi pesan yang dikirim ke penerima.</div>
-
-      <label>Paste Armor Block</label>
-      <textarea id="armorInput" rows="12" class="mono" placeholder="-----BEGIN ENCRYPTED MESSAGE----- ..."></textarea>
-
-      <button id="decryptBtn">Decrypt & Verify</button>
-
-      <h3 style="margin-top:12px">Decrypted Plaintext</h3>
-      <pre id="plainOutput">[plaintext akan tampil di sini]</pre>
-
-      <h3 style="margin-top:12px">Verification / Status</h3>
-      <pre id="statusOutput">[status verifikasi akan tampil di sini]</pre>
-    </div>
-  </div>
-
-  <script src="script.js"></script>
-</body>
-</html>
+    <!-- =============================
+         🔐 BAGIAN ENCRYPT & SIGN
+         =============================
+         - Message: isi pesan plaintext yang ingin dikirim.
+         - Sender Private Key: digunakan untuk menandatangani pesan (signature).
+         - Sender Public Key: disertakan dalam hasil armor untuk verifikasi penerima.
+         - Recipient Public Key: digunakan untuk mengenkripsi pesan agar hanya penerima bisa membuka.
+    --
