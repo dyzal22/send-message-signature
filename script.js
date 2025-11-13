@@ -1,20 +1,32 @@
 /* ===========================================================
-   Hybrid Encryption + Digital Signature (RSA + AES)
-   ===========================================================
-   - Confidentiality  : AES-GCM (symmetric) + RSA-OAEP (asymmetric)
-   - Integrity        : SHA-256 hash + RSA-PSS signature
-   - Authentication   : Sender Public Key verification
-   - Non-Repudiation  : Signature created by sender private key
+   script.js 
+   -----------------------------------------------------------
+   Proses per Bagian.
 
-   Semua proses dijalankan di sisi klien (browser) menggunakan
-   WebCrypto API, tanpa mengirim kunci ke server.
+   PENGIRIM:
+   1. Buat kunci AES-GCM dan IV (acak)
+   2. Enkripsi pesan plaintext dengan AES-GCM
+   3. Ekspor kunci AES mentah (raw) lalu enkripsi dengan kunci publik RSA penerima (RSA-OAEP)
+   4. Tanda tangani (sign) hasil Encrypted-Key menggunakan kunci privat RSA-PSS pengirim
+   5. Gabungkan semua hasil menjadi satu blok armor (Encrypted-Key, IV, Signature, Sender-Public-Key, Ciphertext)
+
+   PENERIMA:
+   1. Pisahkan armor menjadi bagian-bagian (Encrypted-Key, IV, Signature, Sender-Public-Key, Ciphertext)
+   2. Verifikasi tanda tangan (signature) atas Encrypted-Key menggunakan kunci publik pengirim
+   3. Jika signature VALID → lanjut dekripsi Encrypted-Key dengan kunci privat penerima (RSA-OAEP)
+   4. Gunakan AES key hasil dekripsi untuk membuka ciphertext (AES-GCM)
+   5. Tampilkan plaintext hanya jika semua valid
+
+   💡 Tujuan keamanan:
+   - Signature divalidasi **lebih dahulu** sebelum dekripsi → mencegah serangan MITM yang memanipulasi key/signature.
    =========================================================== */
 
-/* -----------------------------
-   Fungsi UTILITAS UMUM
-------------------------------*/
 
-// Konversi string Base64 → ArrayBuffer
+/* ===========================================================
+   Bagian 1 — Fungsi bantu konversi dasar
+   =========================================================== */
+
+/** Konversi base64 ke ArrayBuffer */
 function base64ToArrayBuffer(base64) {
   const binary = atob(base64);
   const len = binary.length;
@@ -23,7 +35,7 @@ function base64ToArrayBuffer(base64) {
   return bytes.buffer;
 }
 
-// Konversi ArrayBuffer → Base64
+/** Konversi ArrayBuffer ke base64 */
 function arrayBufferToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
   let binary = '';
@@ -31,13 +43,13 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 
-// Konversi teks biasa → ArrayBuffer (UTF-8)
+/** Konversi string UTF-8 ke ArrayBuffer */
 function strToArrayBuffer(str) { return new TextEncoder().encode(str); }
 
-// Konversi ArrayBuffer → string (UTF-8)
+/** Konversi ArrayBuffer ke string UTF-8 */
 function arrayBufferToStr(buf) { return new TextDecoder().decode(buf); }
 
-// Hapus header/footer dari PEM dan ubah ke ArrayBuffer
+/** Hapus header/footer PEM lalu ubah ke ArrayBuffer */
 function pemToArrayBuffer(pem) {
   const b64 = pem.replace(/-----BEGIN [^-]+-----/g, '')
                  .replace(/-----END [^-]+-----/g, '')
@@ -45,92 +57,92 @@ function pemToArrayBuffer(pem) {
   return base64ToArrayBuffer(b64);
 }
 
-/* -----------------------------
-   Fungsi Import Key (RSA)
-------------------------------*/
 
-// Import Private Key (PKCS#8) untuk RSA
+/* ===========================================================
+   Bagian 2 — Import kunci (Private/Public) ke WebCrypto
+   =========================================================== */
+
+/** Import private key PKCS#8 */
 async function importPrivateKeyPKCS8(pem, algoName, usages) {
   const ab = pemToArrayBuffer(pem);
   return crypto.subtle.importKey('pkcs8', ab, { name: algoName, hash: 'SHA-256' }, false, usages);
 }
 
-// Import Public Key (SPKI)
+/** Import public key SPKI */
 async function importPublicKeySPKI(pem, algoName, usages) {
   const ab = pemToArrayBuffer(pem);
   return crypto.subtle.importKey('spki', ab, { name: algoName, hash: 'SHA-256' }, false, usages);
 }
 
-/* -----------------------------
-   Fungsi AES-GCM (Symmetric)
-------------------------------*/
 
-// Generate kunci acak AES-256
+/* ===========================================================
+   Bagian 3 — Fungsi AES-GCM (enkripsi simetris)
+   =========================================================== */
+
+/** Generate key AES-GCM 256-bit */
 async function generateAesKey() {
   return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
 }
 
-// Ekspor key AES ke bentuk raw bytes
+/** Ekspor kunci AES mentah (raw bytes) */
 async function exportAesRaw(key) { return crypto.subtle.exportKey('raw', key); }
 
-// Import kembali raw bytes ke objek Key
-async function importAesRaw(raw) {
-  return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
-}
+/** Import kunci AES mentah kembali ke CryptoKey */
+async function importAesRaw(raw) { return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt','decrypt']); }
 
-// Enkripsi data dengan AES-GCM
+/** Enkripsi data menggunakan AES-GCM */
 async function aesEncrypt(aesKey, iv, dataBuf) {
   return crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, dataBuf);
 }
 
-// Dekripsi data AES-GCM
+/** Dekripsi data menggunakan AES-GCM */
 async function aesDecrypt(aesKey, iv, cipherBuf) {
   return crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, cipherBuf);
 }
 
-/* -----------------------------
-   Operasi RSA (OAEP dan PSS)
-------------------------------*/
 
-// RSA-OAEP untuk mengenkripsi AES Key (Confidentiality)
+/* ===========================================================
+   Bagian 4 — Fungsi RSA (OAEP & PSS)
+   =========================================================== */
+
+/** Enkripsi RSA-OAEP (untuk membungkus kunci AES) */
 async function rsaOaepEncrypt(spkiPem, dataBuf) {
   const pub = await importPublicKeySPKI(spkiPem, 'RSA-OAEP', ['encrypt']);
   return crypto.subtle.encrypt({ name: 'RSA-OAEP' }, pub, dataBuf);
 }
 
-// RSA-OAEP untuk mendekripsi AES Key (Confidentiality)
+/** Dekripsi RSA-OAEP (membuka kunci AES) */
 async function rsaOaepDecrypt(pkcs8Pem, encBuf) {
   const priv = await importPrivateKeyPKCS8(pkcs8Pem, 'RSA-OAEP', ['decrypt']);
   return crypto.subtle.decrypt({ name: 'RSA-OAEP' }, priv, encBuf);
 }
 
-// RSA-PSS untuk menandatangani hash pesan (Integrity + Non-Repudiation)
+/** Tanda tangan RSA-PSS (menandatangani Encrypted-Key) */
 async function rsaPssSign(pkcs8Pem, dataBuf) {
   const priv = await importPrivateKeyPKCS8(pkcs8Pem, 'RSA-PSS', ['sign']);
   return crypto.subtle.sign({ name: 'RSA-PSS', saltLength: 32 }, priv, dataBuf);
 }
 
-// RSA-PSS untuk memverifikasi tanda tangan (Integrity + Authentication)
+/** Verifikasi tanda tangan RSA-PSS */
 async function rsaPssVerify(spkiPem, dataBuf, sigBuf) {
   const pub = await importPublicKeySPKI(spkiPem, 'RSA-PSS', ['verify']);
   return crypto.subtle.verify({ name: 'RSA-PSS', saltLength: 32 }, pub, sigBuf, dataBuf);
 }
 
-/* -----------------------------
-   ARMOR STYLE ENCODING
-------------------------------*/
-/**
- * Bentuk pesan terenkripsi dikemas seperti blok ASCII armor
- * agar mudah dikopi/ditransfer antar user (mirip OpenPGP).
- */
+
+/* ===========================================================
+   Bagian 5 — Format Armor (header + ciphertext)
+   =========================================================== */
+
+/** Membentuk blok armor berisi header dan ciphertext */
 function buildArmor({ encKey_b64, iv_b64, cipher_b64, sig_b64, sender_pub_pem }) {
   return [
     '-----BEGIN ENCRYPTED MESSAGE-----',
-    'Algo: AES-256-GCM + RSA-OAEP + RSA-PSS',
-    'Version: 1.0',
+    'Algoritma: AES-256-GCM + RSA-OAEP + RSA-PSS',
+    'Versi: 1.0',
     `Encrypted-Key: ${encKey_b64}`,
     `IV: ${iv_b64}`,
-    `Signature: ${sig_b64}`,
+    `Signature: ${sig_b64}`, // tanda tangan atas Encrypted-Key
     'Sender-Public-Key:',
     sender_pub_pem.trim(),
     '-----END HEADER-----',
@@ -139,93 +151,97 @@ function buildArmor({ encKey_b64, iv_b64, cipher_b64, sig_b64, sender_pub_pem })
   ].join('\n');
 }
 
-// Parser untuk membaca header & body dari armor block
+/** Parsing blok armor agar bisa diambil field-nya */
 function parseArmor(armorText) {
   const headerMatch = armorText.match(/-----BEGIN ENCRYPTED MESSAGE-----([\s\S]*?)-----END HEADER-----/);
   if (!headerMatch) throw new Error('Header armor tidak ditemukan.');
-  const header = headerMatch[1];
 
+  const header = headerMatch[1];
   const encKeyM = header.match(/Encrypted-Key:\s*([A-Za-z0-9+/=]+)/);
   const ivM = header.match(/IV:\s*([A-Za-z0-9+/=]+)/);
   const sigM = header.match(/Signature:\s*([A-Za-z0-9+/=]+)/);
   const senderPubM = header.match(/(-----BEGIN PUBLIC KEY-----[\s\S]+?-----END PUBLIC KEY-----)/);
-
   const bodyMatch = armorText.match(/-----END HEADER-----\s*([\s\S]*?)\s*-----END ENCRYPTED MESSAGE-----/);
+
   if (!bodyMatch) throw new Error('Body ciphertext tidak ditemukan.');
+  if (!encKeyM || !ivM || !sigM || !senderPubM) throw new Error('Field penting hilang.');
 
   return {
-    encKey_b64: encKeyM[1],
-    iv_b64: ivM[1],
-    sig_b64: sigM[1],
-    sender_pub_pem: senderPubM[1],
+    encKey_b64: encKeyM[1].trim(),
+    iv_b64: ivM[1].trim(),
+    sig_b64: sigM[1].trim(),
+    sender_pub_pem: senderPubM[1].trim(),
     cipher_b64: bodyMatch[1].trim()
   };
 }
 
+
 /* ===========================================================
-   TAB 1 — ENKRIPSI & PENANDATANGANAN PESAN
+   Bagian 6 — Proses ENKRIPSI (Sisi Pengirim)
    =========================================================== */
 document.getElementById('encryptBtn').addEventListener('click', async () => {
-  const msg = document.getElementById('messagePlain').value;
+  const msg = document.getElementById('messagePlain').value || '';
   const senderPrivPem = document.getElementById('senderPriv').value.trim();
   const senderPubPem = document.getElementById('senderPub').value.trim();
   const recipientPubPem = document.getElementById('recipientPub').value.trim();
   const armorOut = document.getElementById('armorOutput');
 
-  if (!msg) return alert('Pesan kosong.');
+  if (!msg) return alert('Pesan tidak boleh kosong.');
   if (!senderPrivPem || !senderPubPem || !recipientPubPem)
-    return alert('Pastikan semua key sudah dimasukkan.');
+    return alert('Lengkapi semua kunci.');
 
   try {
-    /** 1️⃣ Generate AES Key (untuk kecepatan & efisiensi enkripsi data besar) */
+    // 1️⃣ Buat key AES-GCM dan IV acak
     const aesKey = await generateAesKey();
-    const iv = crypto.getRandomValues(new Uint8Array(12)); // inisialisasi vector
+    const iv = crypto.getRandomValues(new Uint8Array(12));
 
-    /** 2️⃣ Encrypt plaintext dengan AES-GCM */
+    // 2️⃣ Enkripsi pesan plaintext dengan AES-GCM
     const plainBuf = strToArrayBuffer(msg);
     const cipherBuf = await aesEncrypt(aesKey, iv, plainBuf);
 
-    /** 3️⃣ Encrypt AES key dengan public key penerima (RSA-OAEP) */
+    // 3️⃣ Ekspor kunci AES mentah, lalu enkripsi dengan RSA-OAEP (kunci publik penerima)
     const rawAes = await exportAesRaw(aesKey);
     const encKeyBuf = await rsaOaepEncrypt(recipientPubPem, rawAes);
 
-    /** 4️⃣ Hash pesan (SHA-256) → hasil dalam hex */
-    const hashBuf = await crypto.subtle.digest('SHA-256', plainBuf);
-    const hashHex = Array.from(new Uint8Array(hashBuf))
-      .map(b => b.toString(16).padStart(2, '0')).join('');
+    // 4️⃣ Tanda tangani hasil Encrypted-Key menggunakan RSA-PSS (kunci privat pengirim)
+    const sigBuf = await rsaPssSign(senderPrivPem, encKeyBuf);
 
-    /** 5️⃣ Sign hash dengan RSA-PSS dan private key pengirim */
-    const sigBuf = await rsaPssSign(senderPrivPem, strToArrayBuffer(hashHex));
-
-    /** 6️⃣ Ubah semua hasil ke Base64 untuk disimpan dalam armor */
+    // 5️⃣ Konversi semua hasil menjadi Base64
     const encKey_b64 = arrayBufferToBase64(encKeyBuf);
     const iv_b64 = arrayBufferToBase64(iv.buffer);
     const cipher_b64 = arrayBufferToBase64(cipherBuf);
     const sig_b64 = arrayBufferToBase64(sigBuf);
 
-    /** 7️⃣ Susun armor block berisi ciphertext, signature, dan public key pengirim */
+    // 6️⃣ Bangun blok armor lengkap
     const armor = buildArmor({ encKey_b64, iv_b64, cipher_b64, sig_b64, sender_pub_pem: senderPubPem });
 
-    /** 8️⃣ Tampilkan armor ke layar */
+    // 7️⃣ Tampilkan hasil armor di textarea output
     armorOut.textContent = armor;
+
   } catch (err) {
     console.error(err);
-    alert('Terjadi error saat encrypt/sign: ' + err.message);
+    alert('Terjadi kesalahan saat enkripsi: ' + err.message);
   }
 });
 
-/* Tombol copy armor ke clipboard */
+
+/* ===========================================================
+   Bagian 7 — Tombol salin & unduh (opsional)
+   =========================================================== */
 document.getElementById('copyArmor').addEventListener('click', async () => {
   const t = document.getElementById('armorOutput').textContent;
-  if (!t) return alert('Tidak ada hasil untuk disalin.');
-  await navigator.clipboard.writeText(t);
-  alert('Armor berhasil disalin.');
+  if (!t) return alert('Tidak ada armor untuk disalin.');
+  try {
+    await navigator.clipboard.writeText(t);
+    alert('Armor berhasil disalin ke clipboard.');
+  } catch (e) {
+    alert('Gagal menyalin: ' + e.message);
+  }
 });
 
-/* Tombol download armor ke file .asc */
 document.getElementById('downloadArmor').addEventListener('click', () => {
   const t = document.getElementById('armorOutput').textContent;
-  if (!t) return alert('Tidak ada hasil untuk diunduh.');
+  if (!t) return alert('Tidak ada armor untuk diunduh.');
   const blob = new Blob([t], { type: 'text/plain' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -233,8 +249,9 @@ document.getElementById('downloadArmor').addEventListener('click', () => {
   a.click();
 });
 
+
 /* ===========================================================
-   TAB 2 — DEKRIPSI & VERIFIKASI
+   Bagian 8 — Proses DEKRIPSI (Sisi Penerima)
    =========================================================== */
 document.getElementById('decryptBtn').addEventListener('click', async () => {
   const recipientPrivPem = document.getElementById('recipientPriv').value.trim();
@@ -243,45 +260,49 @@ document.getElementById('decryptBtn').addEventListener('click', async () => {
   const statusOut = document.getElementById('statusOutput');
 
   if (!recipientPrivPem || !armorText)
-    return alert('Masukkan kunci private penerima dan blok armor.');
+    return alert('Masukkan private key penerima dan armor pesan.');
 
   try {
-    /** 1️⃣ Parse armor block */
+    // 1️⃣ Parsing armor
     const parsed = parseArmor(armorText);
 
-    /** 2️⃣ Dekripsi AES key dengan RSA-OAEP (Private key penerima) */
+    // 2️⃣ Ambil Encrypted-Key & Signature dalam bentuk ArrayBuffer
     const encKeyBuf = base64ToArrayBuffer(parsed.encKey_b64);
+    const sigBuf = base64ToArrayBuffer(parsed.sig_b64);
+
+    // 3️⃣ Verifikasi signature terhadap Encrypted-Key
+    const verified = await rsaPssVerify(parsed.sender_pub_pem, encKeyBuf, sigBuf);
+    if (!verified) {
+      statusOut.textContent = '❌ Signature TIDAK VALID — kemungkinan pesan diubah. Dekripsi dibatalkan.';
+      statusOut.style.background = '#f7c5c5';
+      plainOut.textContent = '';
+      return;
+    }
+
+    // 4️⃣ Jika signature valid → lanjut dekripsi Encrypted-Key
     const rawAes = await rsaOaepDecrypt(recipientPrivPem, encKeyBuf);
     const aesKey = await importAesRaw(rawAes);
 
-    /** 3️⃣ Dekripsi ciphertext dengan AES-GCM */
+    // 5️⃣ Dekripsi ciphertext menggunakan AES-GCM
     const cipherBuf = base64ToArrayBuffer(parsed.cipher_b64);
     const ivBuf = base64ToArrayBuffer(parsed.iv_b64);
     const plainBuf = await aesDecrypt(aesKey, new Uint8Array(ivBuf), cipherBuf);
     const plainText = arrayBufferToStr(plainBuf);
+
+    // 6️⃣ Tampilkan hasil dekripsi & status valid
     plainOut.textContent = plainText;
+    statusOut.textContent = '✅ Signature VALID — pesan berhasil diverifikasi dan didekripsi.';
+    statusOut.style.background = '#c8f7c5';
 
-    /** 4️⃣ Hitung ulang hash pesan */
-    const hashBuf = await crypto.subtle.digest('SHA-256', strToArrayBuffer(plainText));
-    const hashHex = Array.from(new Uint8Array(hashBuf))
-      .map(b => b.toString(16).padStart(2, '0')).join('');
-
-    /** 5️⃣ Verifikasi signature dengan public key pengirim (yang disertakan di armor) */
-    const sigBuf = base64ToArrayBuffer(parsed.sig_b64);
-    const valid = await rsaPssVerify(parsed.sender_pub_pem, strToArrayBuffer(hashHex), sigBuf);
-
-    /** 6️⃣ Tampilkan hasil verifikasi */
-    statusOut.textContent = valid
-      ? '✅ Signature VALID — Integrity dan autentikasi terjamin.'
-      : '❌ Signature INVALID — Pesan mungkin diubah atau key salah.';
   } catch (err) {
     console.error(err);
-    alert('Error saat dekripsi/verifikasi: ' + err.message);
+    alert('Kesalahan saat dekripsi: ' + err.message);
   }
 });
 
+
 /* ===========================================================
-   NAVIGASI ANTAR TAB
+   Bagian 9 — Navigasi tab (Encrypt / Decrypt)
    =========================================================== */
 document.getElementById('tabEncrypt').addEventListener('click', () => {
   document.getElementById('contentEncrypt').style.display = 'block';
