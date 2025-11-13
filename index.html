@@ -1,136 +1,138 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PDF Digital Signature</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PDF & Message Crypto Playground</title>
+
+  <!-- pdf-lib untuk tab tanda tangan PDF -->
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js"></script>
+  <!-- pdf.js (dipakai untuk ekstraksi teks signed pdf) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+
   <style>
-    body {
-      font-family: "Segoe UI", sans-serif;
-      background: #f4f6f8;
-      padding: 2em;
-      color: #222;
-    }
-    .container {
-      max-width: 700px;
-      margin: auto;
-      background: #fff;
-      border-radius: 12px;
-      box-shadow: 0 3px 12px rgba(0, 0, 0, 0.1);
-      overflow: hidden;
-    }
-    .tabs {
-      display: flex;
-      border-bottom: 2px solid #eee;
-    }
-    .tab {
-      flex: 1;
-      text-align: center;
-      padding: 1em;
-      cursor: pointer;
-      background: #f9f9f9;
-      border-right: 1px solid #eee;
-      font-weight: 600;
-      transition: background 0.2s;
-    }
-    .tab:last-child {
-      border-right: none;
-    }
-    .tab.active {
-      background: #007bff;
-      color: white;
-    }
-    .content {
-      padding: 2em;
-      display: none;
-    }
-    .content.active {
-      display: block;
-    }
-    input,
-    textarea,
-    button {
-      width: 100%;
-      margin-bottom: 1em;
-      padding: 0.8em;
-      font-size: 1em;
-      box-sizing: border-box;
-    }
-    button {
-      background: #007bff;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    button:hover {
-      background: #0056b3;
-    }
-    pre {
-      background: #eee;
-      padding: 1em;
-      border-radius: 6px;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    #verifyResult {
-      padding: 1em;
-      border-radius: 6px;
-      margin-top: 1em;
-      font-weight: 600;
-    }
+    body{font-family: "Segoe UI",sans-serif; background:#f6f8fa; margin:0; padding:2em; color:#222}
+    .container{max-width:900px;margin:0 auto;background:#fff;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,0.06);overflow:hidden}
+    .tabs{display:flex;border-bottom:1px solid #eee}
+    .tab{flex:1;padding:12px 16px;text-align:center;cursor:pointer;background:#fafafa;border-right:1px solid #eee;font-weight:600}
+    .tab:last-child{border-right:none}
+    .tab.active{background:#007bff;color:#fff}
+    .content{padding:20px;display:none}
+    .content.active{display:block}
+    input,textarea,button,select{width:100%;padding:10px;margin:8px 0 12px 0;box-sizing:border-box}
+    textarea{font-family:monospace}
+    button{background:#007bff;color:#fff;border:none;border-radius:6px;cursor:pointer}
+    pre{background:#f3f4f6;padding:10px;border-radius:6px;white-space:pre-wrap;word-break:break-word}
+    .small{font-size:0.9em;color:#555}
+    .row{display:flex;gap:12px}
+    .col{flex:1}
+    .header-label{font-weight:700;margin-top:8px}
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="tabs">
-      <div id="tab-sign" class="tab active">🖋️ Digital Signature</div>
-      <div id="tab-verify" class="tab">🔍 Verifikasi Signature</div>
-      <div id="tab-verify-signed" class="tab">📄 Verifikasi Signed PDF</div>
+    <div class="tabs" id="tabs">
+      <div id="tab-signpdf" class="tab active">🖋️ Sign PDF</div>
+      <div id="tab-verifyorig" class="tab">🔍 Verify Original</div>
+      <div id="tab-verifysigned" class="tab">📄 Verify Signed PDF</div>
+      <div id="tab-encrypt" class="tab">🔐 Encrypt & Package (Armor)</div>
+      <div id="tab-receive" class="tab">📥 Receive & Verify</div>
     </div>
 
-    <!-- TAB 1 -->
-    <div id="content-sign" class="content active">
-      <h2>Buat Digital Signature PDF</h2>
-      <input type="file" id="pdfUploader" accept=".pdf" />
-      <textarea id="privateKey" rows="6" placeholder="-----BEGIN PRIVATE KEY----- ..."></textarea>
-      <button id="signButton">Tandatangani Dokumen</button>
-      <div id="loader" style="display:none;">⏳ Memproses...</div>
+    <!-- TAB 1: Sign PDF -->
+    <div id="content-signpdf" class="content active">
+      <h3>Sign PDF (client-side)</h3>
+      <p class="small">Upload PDF → masukkan private key PEM (PKCS#8) → Sign → Download signed PDF</p>
+      <input type="file" id="pdfUploader" accept=".pdf">
+      <label class="header-label">Private Key (PEM PKCS#8)</label>
+      <textarea id="privateKey" rows="6" placeholder="-----BEGIN PRIVATE KEY-----..."></textarea>
+      <button id="signButton">Sign & Embed into PDF</button>
+      <div id="loader" style="display:none">Memproses...</div>
 
-      <div id="results" style="display:none;">
-        <h3>Hasil Tanda Tangan</h3>
-        <strong>Hash (SHA-256):</strong>
-        <pre id="hashResult"></pre>
-        <strong>Digital Signature (Base64):</strong>
-        <pre id="sigResult"></pre>
+      <div id="results" style="display:none">
+        <h4>Hasil</h4>
+        <div><strong>Hash (SHA-256):</strong><pre id="hashResult"></pre></div>
+        <div><strong>Signature (Base64):</strong><pre id="sigResult"></pre></div>
         <button id="downloadBtn">💾 Download Signed PDF</button>
       </div>
     </div>
 
-    <!-- TAB 2 -->
-    <div id="content-verify" class="content">
-      <h2>Verifikasi Digital Signature</h2>
-      <input type="file" id="verifyPdf" accept=".pdf" />
-      <textarea id="publicKey" rows="6" placeholder="-----BEGIN PUBLIC KEY----- ..."></textarea>
-      <textarea id="signatureInput" rows="3" placeholder="Tempel signature dari hasil tanda tangan"></textarea>
-      <button id="verifyButton">Verifikasi Signature</button>
-      <div id="verifyResult" style="display:none;"></div>
+    <!-- TAB 2: Verify Original -->
+    <div id="content-verifyorig" class="content">
+      <h3>Verify Original (use original PDF, public key, signature)</h3>
+      <input type="file" id="verifyPdf" accept=".pdf">
+      <label class="header-label">Public Key (PEM)</label>
+      <textarea id="publicKey" rows="6" placeholder="-----BEGIN PUBLIC KEY-----..."></textarea>
+      <label class="header-label">Signature (Base64)</label>
+      <textarea id="signatureInput" rows="4" placeholder="Paste signature Base64..."></textarea>
+      <button id="verifyButton">Verify</button>
+      <div id="verifyResult" style="display:none"></div>
     </div>
-  </div>
-    <!-- TAB 3 -->
-<div id="content-verify-signed" class="content">
-  <h2>Verifikasi Signed Document</h2>
-  <input type="file" id="verifySignedPdf" accept=".pdf" />
-  <textarea id="publicKey2" rows="6" placeholder="-----BEGIN PUBLIC KEY----- ..."></textarea>
-  <textarea id="signatureInput2" rows="3" placeholder="Tempel signature dari hasil tanda tangan"></textarea>
-  <button id="verifySignedButton">Verifikasi Signed PDF</button>
-  <div id="verifySignedResult" style="display:none;"></div>
-</div>
 
-  <!-- script harus di-load SETELAH elemen DOM -->
+    <!-- TAB 3: Verify Signed PDF -->
+    <div id="content-verifysigned" class="content">
+      <h3>Verify Signed PDF (reads embedded hash)</h3>
+      <input type="file" id="verifySignedPdf" accept=".pdf">
+      <label class="header-label">Public Key (PEM)</label>
+      <textarea id="publicKey2" rows="6" placeholder="-----BEGIN PUBLIC KEY-----..."></textarea>
+      <label class="header-label">Signature (Base64)</label>
+      <textarea id="signatureInput2" rows="4" placeholder="Paste signature Base64 from Sign PDF tab..."></textarea>
+      <button id="verifySignedButton">Verify Signed PDF</button>
+      <div id="verifySignedResult" style="display:none"></div>
+    </div>
+
+    <!-- TAB 4: Encrypt & Armor -->
+    <div id="content-encrypt" class="content">
+      <h3>Encrypt & Package (Armor-style)</h3>
+      <p class="small">Masukkan pesan, private key pengirim (untuk sign), public key penerima (untuk enkripsi). Hasilnya adalah satu blok ASCII armor yang bisa di-copy-paste.</p>
+
+      <label class="header-label">Message (plaintext)</label>
+      <textarea id="messagePlain" rows="6" placeholder="Tulis pesan di sini..."></textarea>
+
+      <div class="row">
+        <div class="col">
+          <label class="header-label">Sender Private Key (PEM)</label>
+          <textarea id="senderPriv" rows="6" placeholder="-----BEGIN PRIVATE KEY-----..."></textarea>
+        </div>
+        <div class="col">
+          <label class="header-label">Recipient Public Key (PEM)</label>
+          <textarea id="recipientPub" rows="6" placeholder="-----BEGIN PUBLIC KEY-----..."></textarea>
+        </div>
+      </div>
+
+      <button id="encryptButton">Encrypt & Produce Armor</button>
+
+      <h4>Armor (copy-paste to send)</h4>
+      <pre id="armorOutput" style="min-height:120px"></pre>
+      <div class="row">
+        <button id="copyArmor">Copy Armor</button>
+        <button id="downloadArmor">Download Armor (.asc)</button>
+      </div>
+    </div>
+
+    <!-- TAB 5: Receive & Verify -->
+    <div id="content-receive" class="content">
+      <h3>Receive & Verify</h3>
+      <p class="small">Paste armor block (dikirim pengirim) dan masukkan private key penerima untuk dekripsi.</p>
+
+      <label class="header-label">Recipient Private Key (PEM)</label>
+      <textarea id="recipientPriv" rows="6" placeholder="-----BEGIN PRIVATE KEY-----..."></textarea>
+
+      <label class="header-label">Paste Armor Block</label>
+      <textarea id="armorInput" rows="12" placeholder="Paste entire armor block here..."></textarea>
+
+      <button id="decryptButton">Decrypt & Verify</button>
+
+      <h4>Result</h4>
+      <div id="decryptResult" style="display:none">
+        <strong>Plaintext message:</strong>
+        <pre id="decryptedMessage"></pre>
+        <div id="decryptStatus" style="margin-top:10px"></div>
+      </div>
+    </div>
+
+  </div>
+
   <script src="script.js"></script>
 </body>
 </html>
