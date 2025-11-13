@@ -1,80 +1,289 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Hybrid Encrypt + Full Verify (Armor)</title>
+  <meta charset="UTF-8">
+  <title>Hybrid Encryption & Digital Signature</title>
   <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial;background:#f4f6f9;margin:0;padding:20px;color:#222}
-    .wrap{max-width:900px;margin:0 auto;background:#fff;padding:18px;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,0.06)}
-    .tabs{display:flex;gap:8px;margin-bottom:16px}
-    .tab{flex:1;padding:10px 12px;text-align:center;cursor:pointer;background:#2f3640;color:#fff;border-radius:6px}
-    .tab.inactive{background:#57606f}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    label{font-weight:600;margin-top:8px;display:block}
-    textarea,input{width:100%;padding:10px;border:1px solid #dfe6e9;border-radius:6px;resize:vertical}
-    textarea.mono{font-family:monospace}
-    button{margin-top:12px;padding:10px 14px;background:#2e86de;color:#fff;border:none;border-radius:8px;cursor:pointer}
-    pre{background:#f7f9fb;padding:12px;border-radius:8px;white-space:pre-wrap;word-break:break-word}
-    .small{font-size:0.9em;color:#555}
+    body {
+      font-family: Arial, sans-serif;
+      margin: 40px;
+      background: #f6f8fa;
+      color: #222;
+    }
+
+    h1 {
+      text-align: center;
+      color: #0a66c2;
+    }
+
+    nav {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    nav button {
+      background: #0a66c2;
+      color: white;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    nav button.active {
+      background: #004a99;
+    }
+
+    .tab {
+      display: none;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    textarea, input {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+      margin-bottom: 15px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-family: monospace;
+    }
+
+    button.action {
+      background: #0a66c2;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .result {
+      background: #eef;
+      padding: 15px;
+      border-radius: 6px;
+      white-space: pre-wrap;
+    }
+
+    /* 🔧 Layout dua kolom sejajar untuk Private & Public Key */
+    .key-pair-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .key-pair-container textarea {
+      width: 100%;
+      height: 160px;
+      resize: vertical;
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      <div id="tabEncrypt" class="tab">🔐 Encrypt & Sign (Sender)</div>
-      <div id="tabReceive" class="tab inactive">📥 Receive & Verify (Receiver)</div>
-    </div>
+  <h1>Hybrid Encryption + Digital Signature</h1>
 
-    <!-- ENCRYPT & SIGN -->
-    <div id="contentEncrypt">
-      <h2>Encrypt & Sign Message</h2>
-      <label>Message (plaintext)</label>
-      <textarea id="messagePlain" rows="6" placeholder="Tulis pesan yang ingin dikirim..."></textarea>
+  <!-- Navigasi antar tab -->
+  <nav>
+    <button class="tab-btn active" data-tab="send">1️⃣ Kirim Pesan (Encrypt + Sign)</button>
+    <button class="tab-btn" data-tab="receive">2️⃣ Terima Pesan (Verify + Decrypt)</button>
+  </nav>
 
-      <div class="grid">
-        <div>
-          <label>Sender Private Key (PKCS#8 PEM)</label>
-          <textarea id="senderPriv" rows="6" class="mono" placeholder="-----BEGIN PRIVATE KEY-----..."></textarea>
-        </div>
-        <div>
-          <label>Sender Public Key (SPKI PEM) — akan disertakan dalam armor</label>
-          <textarea id="senderPub" rows="6" class="mono" placeholder="-----BEGIN PUBLIC KEY-----..."></textarea>
-        </div>
+  <!-- ========== TAB 1: Kirim Pesan ========== -->
+  <div id="send" class="tab" style="display: block;">
+    <h2>🔐 Kirim Pesan Rahasia</h2>
+    <p>Langkah ini mengenkripsi pesan menggunakan hybrid encryption, dan menandatangani pesan menggunakan private key pengirim.</p>
+
+    <label>Pesan:</label>
+    <textarea id="messageToEncrypt" placeholder="Tulis pesan rahasia..."></textarea>
+
+    <div class="key-pair-container">
+      <div>
+        <label>Sender Private Key (PKCS#8 PEM)</label>
+        <textarea id="senderPrivKey" placeholder="-----BEGIN PRIVATE KEY-----..."></textarea>
       </div>
-
-      <label>Recipient Public Key (SPKI PEM)</label>
-      <textarea id="recipientPub" rows="6" class="mono" placeholder="-----BEGIN PUBLIC KEY-----..."></textarea>
-
-      <button id="encryptBtn">Encrypt & Produce Armor</button>
-
-      <h3 style="margin-top:14px">Armor-style Encrypted Message (copy-paste)</h3>
-      <pre id="armorOutput" style="min-height:120px">[hasil armor akan tampil di sini]</pre>
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <button id="copyArmor">Copy Armor</button>
-        <button id="downloadArmor">Download .asc</button>
+      <div>
+        <label>Sender Public Key (SPKI PEM) — akan disertakan dalam armor</label>
+        <textarea id="senderPubKey" placeholder="-----BEGIN PUBLIC KEY-----..."></textarea>
       </div>
     </div>
 
-    <!-- RECEIVE & VERIFY (hidden until tab clicked) -->
-    <div id="contentReceive" style="display:none;margin-top:8px">
-      <h2>Receive & Verify</h2>
-      <label>Recipient Private Key (PKCS#8 PEM)</label>
-      <textarea id="recipientPriv" rows="6" class="mono" placeholder="-----BEGIN PRIVATE KEY-----..."></textarea>
+    <label>Recipient Public Key (SPKI PEM)</label>
+    <textarea id="recipientPubKey" placeholder="-----BEGIN PUBLIC KEY-----..."></textarea>
 
-      <label>Paste Armor Block</label>
-      <textarea id="armorInput" rows="12" class="mono" placeholder="-----BEGIN ENCRYPTED MESSAGE----- ..."></textarea>
+    <button class="action" onclick="encryptAndSign()">🔒 Enkripsi & Tandatangani</button>
 
-      <button id="decryptBtn">Decrypt & Verify</button>
-
-      <h3 style="margin-top:12px">Decrypted Plaintext</h3>
-      <pre id="plainOutput">[plaintext akan tampil di sini]</pre>
-
-      <h3 style="margin-top:12px">Verification / Status</h3>
-      <pre id="statusOutput">[status verifikasi akan tampil di sini]</pre>
-    </div>
+    <h3>Hasil Enkripsi (Armor)</h3>
+    <div class="result" id="armorResult"></div>
   </div>
 
-  <script src="script.js"></script>
+  <!-- ========== TAB 2: Terima Pesan ========== -->
+  <div id="receive" class="tab">
+    <h2>📩 Terima Pesan & Verifikasi</h2>
+    <p>Langkah ini memverifikasi tanda tangan digital sebelum membuka pesan.  
+    Jika tanda tangan tidak valid, pesan tidak akan didekripsi (menangkal MITM).</p>
+
+    <label>Armor (pesan terenkripsi):</label>
+    <textarea id="armorInput" placeholder="-----BEGIN ENCRYPTED MESSAGE-----..."></textarea>
+
+    <label>Recipient Private Key (PKCS#8 PEM)</label>
+    <textarea id="recipientPrivKey" placeholder="-----BEGIN PRIVATE KEY-----..."></textarea>
+
+    <button class="action" onclick="verifyAndDecrypt()">✅ Verifikasi & Dekripsi</button>
+
+    <h3>Hasil Dekripsi</h3>
+    <div class="result" id="decryptedResult"></div>
+  </div>
+
+  <script>
+    // ===============================
+    // 📑 SISTEM TAB
+    // ===============================
+    const tabButtons = document.querySelectorAll(".tab-btn");
+    const tabs = document.querySelectorAll(".tab");
+    tabButtons.forEach(btn => {
+      btn.addEventListener("click", () => {
+        tabButtons.forEach(b => b.classList.remove("active"));
+        tabs.forEach(t => t.style.display = "none");
+        btn.classList.add("active");
+        document.getElementById(btn.dataset.tab).style.display = "block";
+      });
+    });
+
+    // ===============================
+    // 🧠 Fungsi bantu encoding/decoding
+    // ===============================
+    function str2ab(str) {
+      const buf = new ArrayBuffer(str.length);
+      const bufView = new Uint8Array(buf);
+      for (let i = 0; i < str.length; i++) bufView[i] = str.charCodeAt(i);
+      return buf;
+    }
+    function ab2b64(ab) {
+      return btoa(String.fromCharCode(...new Uint8Array(ab)));
+    }
+    function b642ab(b64) {
+      return Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer;
+    }
+
+    // ===============================
+    // 🔒 PROSES TAB 1: ENKRIPSI & SIGN
+    // ===============================
+    async function encryptAndSign() {
+      const message = document.getElementById("messageToEncrypt").value;
+      const senderPrivPem = document.getElementById("senderPrivKey").value;
+      const senderPubPem = document.getElementById("senderPubKey").value;
+      const recipientPubPem = document.getElementById("recipientPubKey").value;
+      const output = document.getElementById("armorResult");
+
+      try {
+        // 1️⃣ Import key publik penerima untuk enkripsi AES key
+        const recipientPub = await window.crypto.subtle.importKey(
+          "spki", b642ab(recipientPubPem.split("-----")[2].replace(/\s+/g,'')),
+          {name:"RSA-OAEP", hash:"SHA-256"}, false, ["encrypt"]
+        );
+
+        // 2️⃣ Import private key pengirim untuk tanda tangan
+        const senderPriv = await window.crypto.subtle.importKey(
+          "pkcs8", b642ab(senderPrivPem.split("-----")[2].replace(/\s+/g,'')),
+          {name:"RSASSA-PKCS1-v1_5", hash:"SHA-256"}, false, ["sign"]
+        );
+
+        // 3️⃣ Buat session key AES-GCM
+        const aesKey = await crypto.subtle.generateKey({name:"AES-GCM", length:256}, true, ["encrypt","decrypt"]);
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+
+        // 4️⃣ Enkripsi pesan dengan AES-GCM
+        const ciphertext = await crypto.subtle.encrypt({name:"AES-GCM", iv}, aesKey, new TextEncoder().encode(message));
+
+        // 5️⃣ Ekspor AES key lalu enkripsi dengan RSA publik penerima
+        const rawAesKey = await crypto.subtle.exportKey("raw", aesKey);
+        const encryptedAesKey = await crypto.subtle.encrypt({name:"RSA-OAEP"}, recipientPub, rawAesKey);
+
+        // 6️⃣ Buat tanda tangan digital atas ciphertext
+        const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", senderPriv, ciphertext);
+
+        // 7️⃣ Gabungkan menjadi armor (versi ringkas)
+        const armor = `
+-----BEGIN ENCRYPTED MESSAGE-----
+IV:${ab2b64(iv)}
+ENCRYPTED_KEY:${ab2b64(encryptedAesKey)}
+CIPHERTEXT:${ab2b64(ciphertext)}
+SIGNATURE:${ab2b64(signature)}
+SENDER_PUBKEY:${btoa(senderPubPem)}
+-----END ENCRYPTED MESSAGE-----
+`.trim();
+
+        output.textContent = armor;
+
+      } catch (err) {
+        output.textContent = "❌ Error: " + err.message;
+      }
+    }
+
+    // ===============================
+    // 🔍 PROSES TAB 2: VERIFIKASI & DEKRIPSI
+    // ===============================
+    async function verifyAndDecrypt() {
+      const armor = document.getElementById("armorInput").value;
+      const recipientPrivPem = document.getElementById("recipientPrivKey").value;
+      const output = document.getElementById("decryptedResult");
+
+      try {
+        // 1️⃣ Parse semua bagian dari armor
+        const iv_b64 = armor.match(/IV:(.*)/)[1].trim();
+        const key_b64 = armor.match(/ENCRYPTED_KEY:(.*)/)[1].trim();
+        const ct_b64 = armor.match(/CIPHERTEXT:(.*)/)[1].trim();
+        const sig_b64 = armor.match(/SIGNATURE:(.*)/)[1].trim();
+        const sender_pub_b64 = armor.match(/SENDER_PUBKEY:(.*)/)[1].trim();
+
+        const senderPubPem = atob(sender_pub_b64);
+
+        // 2️⃣ Import kunci publik pengirim untuk verifikasi tanda tangan
+        const senderPub = await crypto.subtle.importKey(
+          "spki", b642ab(senderPubPem.split("-----")[2].replace(/\s+/g,'')),
+          {name:"RSASSA-PKCS1-v1_5", hash:"SHA-256"}, false, ["verify"]
+        );
+
+        // 3️⃣ Import private key penerima untuk dekripsi AES key
+        const recipientPriv = await crypto.subtle.importKey(
+          "pkcs8", b642ab(recipientPrivPem.split("-----")[2].replace(/\s+/g,'')),
+          {name:"RSA-OAEP", hash:"SHA-256"}, false, ["decrypt"]
+        );
+
+        const iv = b642ab(iv_b64);
+        const encKey = b642ab(key_b64);
+        const ciphertext = b642ab(ct_b64);
+        const signature = b642ab(sig_b64);
+
+        // 4️⃣ Verifikasi tanda tangan dulu (agar mencegah MITM)
+        const valid = await crypto.subtle.verify(
+          "RSASSA-PKCS1-v1_5", senderPub, signature, ciphertext
+        );
+
+        if (!valid) {
+          output.textContent = "❌ Signature INVALID — pesan tidak akan didekripsi.";
+          return;
+        }
+
+        // 5️⃣ Dekripsi AES key dengan private key penerima
+        const rawAesKey = await crypto.subtle.decrypt({name:"RSA-OAEP"}, recipientPriv, encKey);
+        const aesKey = await crypto.subtle.importKey("raw", rawAesKey, {name:"AES-GCM"}, false, ["decrypt"]);
+
+        // 6️⃣ Dekripsi ciphertext menjadi plaintext
+        const plaintextBuffer = await crypto.subtle.decrypt({name:"AES-GCM", iv:new Uint8Array(iv)}, aesKey, ciphertext);
+        const plaintext = new TextDecoder().decode(plaintextBuffer);
+
+        output.textContent = `✅ Signature VALID\nPesan: ${plaintext}`;
+
+      } catch (err) {
+        output.textContent = "❌ Error: " + err.message;
+      }
+    }
+  </script>
 </body>
 </html>
