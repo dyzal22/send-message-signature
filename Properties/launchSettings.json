@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "Digital_Signature": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      },
+      "dotnetRunMessages": true
+    }
+  }
+}
