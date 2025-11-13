@@ -95,4 +95,80 @@
          - Sender Private Key: digunakan untuk menandatangani pesan (signature).
          - Sender Public Key: disertakan dalam hasil armor untuk verifikasi penerima.
          - Recipient Public Key: digunakan untuk mengenkripsi pesan agar hanya penerima bisa membuka.
-    --
+    -->
+    <div id="contentEncrypt">
+      <h2>Encrypt & Sign Message</h2>
+
+      <!-- Pesan plaintext -->
+      <label>Message (plaintext)</label>
+      <textarea id="messagePlain" rows="6" placeholder="Tulis pesan yang ingin dikirim..."></textarea>
+
+      <!-- Grid berisi kolom kunci pengirim -->
+      <div class="grid">
+        <div>
+          <!-- Kunci Privat Pengirim -->
+          <!-- Digunakan untuk membuat tanda tangan digital (signing).
+               Jangan pernah dibagikan ke orang lain. -->
+          <label>Sender Private Key (PKCS#8 PEM)</label>
+          <textarea id="senderPriv" rows="6" class="mono" placeholder="-----BEGIN PRIVATE KEY-----..."></textarea>
+        </div>
+
+        <div>
+          <!-- Kunci Publik Pengirim -->
+          <!-- Disertakan dalam armor agar penerima dapat memverifikasi tanda tangan digital. -->
+          <label>Sender Public Key (SPKI PEM)</label>
+          <textarea id="senderPub" rows="6" class="mono" placeholder="-----BEGIN PUBLIC KEY-----..."></textarea>
+        </div>
+      </div>
+
+      <!-- Kunci Publik Penerima -->
+      <!-- Digunakan untuk mengenkripsi pesan.
+           Hanya penerima dengan private key pasangannya yang bisa membuka pesan ini. -->
+      <label>Recipient Public Key (SPKI PEM)</label>
+      <textarea id="recipientPub" rows="6" class="mono" placeholder="-----BEGIN PUBLIC KEY-----..."></textarea>
+
+      <button id="encryptBtn">Encrypt & Produce Armor</button>
+
+      <!-- Hasil armor -->
+      <h3 style="margin-top:14px">Armor-style Encrypted Message (copy-paste)</h3>
+      <pre id="armorOutput" style="min-height:120px">[hasil armor akan tampil di sini]</pre>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button id="copyArmor">Copy Armor</button>
+        <button id="downloadArmor">Download .asc</button>
+      </div>
+    </div>
+
+    <!-- =============================
+         📥 BAGIAN RECEIVE & VERIFY
+         =============================
+         - Recipient Private Key: digunakan untuk mendekripsi pesan terenkripsi.
+         - Armor Input: hasil armor dari pengirim (berisi ciphertext + signature).
+         - Output akan menampilkan plaintext + status verifikasi.
+    -->
+    <div id="contentReceive" style="display:none;margin-top:8px">
+      <h2>Receive & Verify</h2>
+
+      <!-- Kunci Privat Penerima -->
+      <!-- Digunakan untuk membuka (decrypt) pesan yang terenkripsi dengan public key penerima. -->
+      <label>Recipient Private Key (PKCS#8 PEM)</label>
+      <textarea id="recipientPriv" rows="6" class="mono" placeholder="-----BEGIN PRIVATE KEY-----..."></textarea>
+
+      <!-- Input Armor -->
+      <label>Paste Armor Block</label>
+      <textarea id="armorInput" rows="12" class="mono" placeholder="-----BEGIN ENCRYPTED MESSAGE----- ..."></textarea>
+
+      <button id="decryptBtn">Decrypt & Verify</button>
+
+      <!-- Hasil dekripsi -->
+      <h3 style="margin-top:12px">Decrypted Plaintext</h3>
+      <pre id="plainOutput">[plaintext akan tampil di sini]</pre>
+
+      <!-- Status verifikasi tanda tangan -->
+      <h3 style="margin-top:12px">Verification / Status</h3>
+      <pre id="statusOutput">[status verifikasi akan tampil di sini]</pre>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
